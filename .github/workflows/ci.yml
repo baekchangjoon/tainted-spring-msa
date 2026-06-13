@@ -1,0 +1,17 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify docs present
+        run: |
+          test -f README.md
+          test -d docs/superpowers/specs
+          test -d docs/superpowers/plans
+          echo "docs present"
