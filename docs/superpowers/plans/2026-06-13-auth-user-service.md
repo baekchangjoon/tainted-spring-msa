@@ -15,6 +15,7 @@
 - `tainted-spring-platform` 계획이 완료되어 있어야 통합 실행이 쉽다(단위/통합 테스트는 Testcontainers로 자체 인프라를 띄우므로 platform 없이도 테스트는 통과한다).
 - **레포 위치**: `/Users/changjoonbaek/workspace_claude-code/tainted-spring-auth-user/` (모든 경로는 이 루트 기준).
 - **포트**: 8081. **패키지 루트**: `com.tainted.authuser`. **Redis 논리 DB**: 0.
+- **로컬 사전 설치**: JDK 17, Maven 3.9+, Git, 그리고 **Docker 데몬**(Task 8 통합 테스트의 Testcontainers, Task 9 이미지 빌드, Task 10 compose에 필요). 단, 단위 테스트 `MockSocialVerifierTest`(Task 3)는 Docker 없이도 동작한다.
 
 ## File Structure
 
@@ -108,6 +109,7 @@ target/
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><version>1.20.3</version><scope>test</scope></dependency>
     <dependency><groupId>org.testcontainers</groupId><artifactId>mysql</artifactId><version>1.20.3</version><scope>test</scope></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>testcontainers</artifactId><version>1.20.3</version><scope>test</scope></dependency>
     <dependency><groupId>io.rest-assured</groupId><artifactId>rest-assured</artifactId><scope>test</scope></dependency>
   </dependencies>
   <build>
@@ -841,11 +843,17 @@ public class OpenApiConfig {
 }
 ```
 
-`src/main/resources/application.yml` 의 `spring:` 블록에 추가 (datasource 위/아래 아무 곳):
+`src/main/resources/application.yml` 의 `spring:` 매핑 바로 아래 자식으로 `mvc:` 키를 추가한다(= `datasource:`/`jpa:`/`data:` 와 같은 2칸 들여쓰기). 추가 후 `spring:` 블록 발췌가 다음과 같아야 한다:
 ```yaml
+spring:
+  application:
+    name: auth-user-service
   mvc:
     problemdetails:
       enabled: true
+  datasource:
+    url: jdbc:mysql://localhost:3306/authuser
+    # ... (이하 Task 1에서 작성한 datasource/jpa/data 설정 그대로 유지)
 ```
 
 - [ ] **Step 4: 컴파일 + 커밋**
@@ -1001,6 +1009,8 @@ git commit -m "test: Testcontainers + RestAssured integration tests"
 
 - [ ] **Step 1: docker 프로파일 설정 (compose 네트워크 호스트명)**
 
+> `${MYSQL_ROOT_PASSWORD:rootpw}` 의 값은 Task 10에서 compose `auth-user` 서비스의 `environment:` 로 주입된다(미주입 시 기본값 `rootpw`).
+
 `src/main/resources/application-docker.yml`:
 ```yaml
 spring:
@@ -1030,7 +1040,12 @@ RUN mvn -q -B -DskipTests package
 # run
 FROM eclipse-temurin:17-jre
 WORKDIR /app
-RUN useradd -r -u 1001 appuser
+# curl: compose/k8s 헬스체크가 /actuator/health 를 호출하는 데 사용.
+# temurin JRE 기본 이미지에는 curl/wget 이 없으므로 명시적으로 설치한다.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd -r -u 1001 appuser
 COPY --from=build /app/target/auth-user-service-0.1.0.jar app.jar
 USER appuser
 EXPOSE 8081
@@ -1052,6 +1067,8 @@ git commit -m "build: Dockerfile and docker profile"
 ---
 
 ## Task 10: platform 레포에 auth-user 배선 (compose + k8s 스켈레톤)
+
+> ⚠️ **작업 레포 전환**: 이 Task의 모든 파일 수정·커밋은 `tainted-spring-auth-user` 가 아니라 **`tainted-spring-platform` 레포**에서 한다. 각 Step의 `cd` 경로를 확인할 것.
 
 **Files (다른 레포 `tainted-spring-platform`):**
 - Modify: `/Users/changjoonbaek/workspace_claude-code/tainted-spring-platform/docker-compose.yml`
@@ -1077,10 +1094,12 @@ git commit -m "build: Dockerfile and docker profile"
     ports:
       - "8081:8081"
     healthcheck:
-      test: ["CMD", "sh", "-c", "wget -qO- http://localhost:8081/actuator/health | grep -q UP"]
+      # 런타임 이미지에 설치한 curl 사용. -f: 비2xx 응답이면 실패 → actuator DOWN 시 unhealthy.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/actuator/health"]
       interval: 15s
       timeout: 5s
-      retries: 15
+      retries: 20
+      start_period: 40s
 ```
 
 > 참고: `<<: *java-service` 가 `environment` 를 병합하지 않고 덮어쓰므로, 위에서 `JAVA_TOOL_OPTIONS`/`SPRING_PROFILES_ACTIVE` 를 명시적으로 다시 적었다.
@@ -1090,12 +1109,11 @@ git commit -m "build: Dockerfile and docker profile"
 Run (platform 레포에서):
 ```bash
 cd /Users/changjoonbaek/workspace_claude-code/tainted-spring-platform
-docker compose up -d --build auth-user
-sleep 60
+docker compose up -d --build --wait auth-user
 curl -s http://localhost:8081/actuator/health
 curl -s -X POST http://localhost:8081/api/v1/auth/guest
 ```
-Expected: health `{"status":"UP"}`, guest 응답에 `accessToken`·`"displayName":"익명"` 포함.
+Expected: `--wait` 가 auth-user 헬스체크 통과까지 블록. health `{"status":"UP"}`, guest 응답에 `accessToken`·`"displayName":"익명"` 포함.
 
 - [ ] **Step 3: k8s Deployment/Service 스켈레톤**
 
