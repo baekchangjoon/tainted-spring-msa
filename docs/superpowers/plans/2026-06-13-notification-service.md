@@ -113,9 +113,9 @@ dependencies {
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.kafka:spring-kafka-test'
-    testImplementation 'org.testcontainers:junit-jupiter:1.20.3'
-    testImplementation 'org.testcontainers:kafka:1.20.3'
-    testImplementation 'org.testcontainers:testcontainers:1.20.3'
+    testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
+    testImplementation 'org.testcontainers:kafka:1.21.4'
+    testImplementation 'org.testcontainers:testcontainers:1.21.4'
     testImplementation 'io.rest-assured:rest-assured'
 }
 
@@ -1021,5 +1021,5 @@ git commit -m "feat: wire notification service into compose and k8s skeleton"
 - 이벤트 POJO 필드(`GraphUpdatedEvent.userId`, `CommentCreatedEvent.postAuthorUserId`) — Task 3 정의, Task 5 consumer 추출 로직 일치 ✔
 - jar 파일명 `notification-service-0.1.0.jar` — `settings.gradle` `rootProject.name='notification-service'` + `version='0.1.0'` 와 Dockerfile COPY 일치 ✔
 - 포트 8087 — `application.yml`, Dockerfile `EXPOSE`, HEALTHCHECK, compose ports, k8s containerPort/readinessProbe 전부 일치 ✔
-- Testcontainers Kafka 이미지 `confluentinc/cp-kafka:7.6.1` — `org.testcontainers:kafka:1.20.3` 의존성 사용 ✔
+- Testcontainers Kafka 이미지 `confluentinc/cp-kafka:7.6.1` — `org.testcontainers:kafka:1.21.4` 의존성 사용 ✔
 - `awaitNotificationCount` 헬퍼 — 비동기 소비 대기 로직(bounded retry polling)을 테스트 내부에 명시적 구현 ✔

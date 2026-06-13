@@ -6,7 +6,7 @@
 
 **Architecture:** Spring WebFlux 리액티브 서비스. 상담사 응답은 결정론적 `DeterministicCounselorClient`로 대체(실제 LLM 호출 없음). 세션/히스토리는 Redis(논리 DB 2)에 리액티브로 저장. mindgraph·community 연동은 인터페이스(`MindGraphClient`, `CommunityClient`) 뒤에 WebClient 구현체를 숨겨, 통합 테스트에서 stub 빈으로 교체. Kafka 소비(post.created, graph.updated)는 spring-kafka 사용. 시간/ID는 주입 가능한 `Clock`/`IdGenerator` 빈으로 결정론 확보. 추적/관측 라이브러리 없음(actuator health만 유지).
 
-**Tech Stack:** Java 21, Gradle 8.10, Spring Boot 3.4.1, Spring WebFlux, Spring Data Redis(Reactive), Spring Kafka, springdoc-openapi-starter-webflux-ui 2.6.0, Redis 7, Testcontainers 1.20.3, RestAssured.
+**Tech Stack:** Java 21, Gradle 8.10, Spring Boot 3.4.1, Spring WebFlux, Spring Data Redis(Reactive), Spring Kafka, springdoc-openapi-starter-webflux-ui 2.6.0, Redis 7, Testcontainers 1.21.4, RestAssured.
 
 ---
 
@@ -134,8 +134,8 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'io.projectreactor:reactor-test'
     testImplementation 'org.springframework.kafka:spring-kafka-test'
-    testImplementation 'org.testcontainers:junit-jupiter:1.20.3'
-    testImplementation 'org.testcontainers:kafka:1.20.3'
+    testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
+    testImplementation 'org.testcontainers:kafka:1.21.4'
     testImplementation 'io.rest-assured:rest-assured'
 }
 

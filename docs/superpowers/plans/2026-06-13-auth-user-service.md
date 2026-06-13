@@ -107,9 +107,9 @@ target/
     <dependency><groupId>org.springdoc</groupId><artifactId>springdoc-openapi-starter-webmvc-ui</artifactId><version>2.6.0</version></dependency>
 
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
-    <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><version>1.20.3</version><scope>test</scope></dependency>
-    <dependency><groupId>org.testcontainers</groupId><artifactId>mysql</artifactId><version>1.20.3</version><scope>test</scope></dependency>
-    <dependency><groupId>org.testcontainers</groupId><artifactId>testcontainers</artifactId><version>1.20.3</version><scope>test</scope></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><version>1.21.4</version><scope>test</scope></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>mysql</artifactId><version>1.21.4</version><scope>test</scope></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>testcontainers</artifactId><version>1.21.4</version><scope>test</scope></dependency>
     <dependency><groupId>io.rest-assured</groupId><artifactId>rest-assured</artifactId><scope>test</scope></dependency>
   </dependencies>
   <build>

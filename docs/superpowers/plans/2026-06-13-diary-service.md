@@ -127,9 +127,9 @@ dependencies {
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.kafka:spring-kafka-test'
-    testImplementation 'org.testcontainers:junit-jupiter:1.20.3'
-    testImplementation 'org.testcontainers:postgresql:1.20.3'
-    testImplementation 'org.testcontainers:kafka:1.20.3'
+    testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
+    testImplementation 'org.testcontainers:postgresql:1.21.4'
+    testImplementation 'org.testcontainers:kafka:1.21.4'
     testImplementation 'io.rest-assured:rest-assured'
 }
 
@@ -1661,7 +1661,7 @@ git commit -m "feat: wire diary service into compose and k8s skeleton"
 - Docker 멀티스테이지/non-root/curl 설치 → Task 8 ✔
 - docker 프로파일 DNS(postgres:5432, kafka:29092) → Task 8 application-docker.yml ✔
 - compose 배선(빈 JAVA_TOOL_OPTIONS 슬롯, depends_on postgres+kafka) + k8s 스켈레톤 → Task 9 ✔
-- Gradle 8.12, Java toolchain 23, Spring Boot 3.4.1, Testcontainers 1.20.3 → Task 1 build.gradle ✔
+- Gradle 8.12, Java toolchain 23, Spring Boot 3.4.1, Testcontainers 1.21.4 → Task 1 build.gradle ✔
 - Jar 이름 `diary-service-0.1.0.jar` → `build.gradle` version+'jar.archiveBaseName' + Dockerfile COPY 일치 ✔
 
 **Placeholder scan:** 모든 코드 step에 완전한 소스, 모든 명령에 기대출력 명시. 플레이스홀더(TODO/FIXME/`...`) 없음. ✔

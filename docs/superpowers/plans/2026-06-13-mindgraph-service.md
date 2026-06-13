@@ -6,7 +6,7 @@
 
 **Architecture:** Spring MVC REST 서비스 + Kafka consumer/producer. diary 본문 조회는 OpenFeign `DiaryContentClient`(`@FeignClient(name="diary", url="${services.diary.url}")`)로 동기 호출. 그래프 추출은 LLM이 아닌 **고정 키워드 사전 기반 결정론 규칙**(같은 본문 → 항상 같은 노드/링크). 그래프는 Postgres(`mindgraph` DB)에 `GraphRecord` 엔티티로, nodes/links는 `ObjectMapper`로 직렬화한 JSON 텍스트 컬럼에 저장. 사용자별 최신 그래프는 Redis(논리 DB 1)에 캐시. 시간/ID는 주입 가능한 `Clock`/`IdGenerator` 빈으로 결정론 확보. 추적/관측 라이브러리는 넣지 않음(actuator health만 유지, correlation/trace id·MDC 주입 없음).
 
-**Tech Stack:** Java 11, Maven, Spring Boot 2.7.18, Spring Cloud OpenFeign(2021.0.8 BOM), Spring Data JPA, Spring Data Redis, spring-kafka(Boot 관리), springdoc-openapi-ui 1.7.0, PostgreSQL, Redis 7, Testcontainers 1.20.3, RestAssured.
+**Tech Stack:** Java 11, Maven, Spring Boot 2.7.18, Spring Cloud OpenFeign(2021.0.8 BOM), Spring Data JPA, Spring Data Redis, spring-kafka(Boot 관리), springdoc-openapi-ui 1.7.0, PostgreSQL, Redis 7, Testcontainers 1.21.4, RestAssured.
 
 ---
 
@@ -129,9 +129,9 @@ target/
 
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.springframework.kafka</groupId><artifactId>spring-kafka-test</artifactId><scope>test</scope></dependency>
-    <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><version>1.20.3</version><scope>test</scope></dependency>
-    <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><version>1.20.3</version><scope>test</scope></dependency>
-    <dependency><groupId>org.testcontainers</groupId><artifactId>kafka</artifactId><version>1.20.3</version><scope>test</scope></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><version>1.21.4</version><scope>test</scope></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><version>1.21.4</version><scope>test</scope></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>kafka</artifactId><version>1.21.4</version><scope>test</scope></dependency>
     <dependency><groupId>io.rest-assured</groupId><artifactId>rest-assured</artifactId><scope>test</scope></dependency>
   </dependencies>
   <build>

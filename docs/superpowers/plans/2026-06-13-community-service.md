@@ -6,7 +6,7 @@
 
 **Architecture:** Spring MVC REST 서비스(레거시 패턴). 글/댓글은 MySQL(`community` DB)에 저장하고, 상태 변경 후 spring-kafka로 JSON 이벤트를 발행한다(추적 헤더 없음, 자기완결적 페이로드). 표시명은 게시글의 `nickname`이며 내부 식별·이벤트 발행에는 `userId`를 쓴다. 시간/ID는 주입 가능한 `Clock`/`IdGenerator` 빈으로 결정론 확보. 추적/관측 라이브러리는 넣지 않음(actuator health만 유지). **Java 8 제약**: record/var/텍스트블록/switch식/패턴매칭 미사용, `javax.*` 네임스페이스 사용.
 
-**Tech Stack:** Java 1.8, Maven, Spring Boot 2.7.18, Spring Data JPA, spring-kafka, springdoc-openapi-ui 1.7.0, MySQL 8.4, Kafka, Testcontainers 1.20.3, RestAssured.
+**Tech Stack:** Java 1.8, Maven, Spring Boot 2.7.18, Spring Data JPA, spring-kafka, springdoc-openapi-ui 1.7.0, MySQL 8.4, Kafka, Testcontainers 1.21.4, RestAssured.
 
 ---
 
@@ -115,9 +115,9 @@ target/
 
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.springframework.kafka</groupId><artifactId>spring-kafka-test</artifactId><scope>test</scope></dependency>
-    <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><version>1.20.3</version><scope>test</scope></dependency>
-    <dependency><groupId>org.testcontainers</groupId><artifactId>mysql</artifactId><version>1.20.3</version><scope>test</scope></dependency>
-    <dependency><groupId>org.testcontainers</groupId><artifactId>kafka</artifactId><version>1.20.3</version><scope>test</scope></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><version>1.21.4</version><scope>test</scope></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>mysql</artifactId><version>1.21.4</version><scope>test</scope></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>kafka</artifactId><version>1.21.4</version><scope>test</scope></dependency>
     <dependency><groupId>io.rest-assured</groupId><artifactId>rest-assured</artifactId><scope>test</scope></dependency>
   </dependencies>
   <build>
@@ -1560,7 +1560,7 @@ git commit -m "feat: wire community service into compose and k8s skeleton"
 - `ProblemDetail` 미사용 — `ProblemResponse` POJO + `@RestControllerAdvice` + `ResponseEntity` + `application/problem+json` 명시. ✔
 - springdoc `org.springdoc:springdoc-openapi-ui:1.7.0`(1.x), Swagger UI `/swagger-ui.html`. ✔
 - MySQL 드라이버 `mysql:mysql-connector-java`(NOT `com.mysql:mysql-connector-j`). ✔
-- spring-kafka/rest-assured 버전은 Boot 2.7.18 parent 관리(미명시). Testcontainers 1.20.3, MySQLContainer(mysql:8.4) + KafkaContainer. ✔
+- spring-kafka/rest-assured 버전은 Boot 2.7.18 parent 관리(미명시). Testcontainers 1.21.4, MySQLContainer(mysql:8.4) + KafkaContainer. ✔
 - parent `spring-boot-starter-parent:2.7.18`, `<java.version>1.8</java.version>`. ✔
 
 **Placeholder scan:** 모든 코드 step에 완전한 소스, 모든 명령에 기대출력 명시. 플레이스홀더 없음. ✔
