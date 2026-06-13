@@ -24,6 +24,7 @@
 
 ### 1.3 핵심 설계 원칙
 - **계측 부재(uninstrumented by design)**: OTel/Micrometer Tracing/Sleuth 의존성·코드 없음. REST 헤더·Kafka 헤더에 추적 컨텍스트(traceparent 등) 전파 없음. 컨테이너는 빈 `JAVA_TOOL_OPTIONS`/`-javaagent` 슬롯만 노출(기본 미설정).
+  - **범위 명확화**: `spring-boot-starter-actuator`의 `/health`(liveness/readiness)는 **유지**한다(블랙박스 테스트가 기동 검증에 사용). 단 tracing/metrics exporter는 추가하지 않는다. 로깅은 **Spring Boot 기본 로깅 그대로** 두고, 상관관계 ID(correlation/trace id)나 MDC 주입을 하지 않는다 — 도구가 붙이기 전까지 완전한 "민낯" 상태.
 - **결정론(determinism)**: 외부 LLM 호출과 그래프 변환을 결정론적 mock/규칙기반으로 대체. 같은 입력 → 항상 같은 출력. 블랙박스 테스트 재현성 확보.
 - **현실적 이기종성(realistic heterogeneity)**: Java 버전 5종, 빌드 도구 2종, 동기/비동기 통신, 4종 저장소를 서비스에 분산.
 - **멀티레포(multi-repo)**: 서비스마다 독립 레포. 대규모 조직의 실제 형태를 모사하고, 품질 도구가 레포 경계를 넘는 추적·계약 정합성을 다루도록 강제.
@@ -32,6 +33,15 @@
 
 ### 1.4 이번 작업의 범위
 **이 문서는 설계까지다.** 실제 코드/레포 생성은 후속 단계(구현 계획 → 구현)에서 점진적으로 진행한다.
+
+### 1.5 용어 정의 (Glossary)
+- **계측 부재(uninstrumented)**: 애플리케이션이 추적/관측을 위한 코드·라이브러리를 전혀 갖지 않은 상태. 추적은 나중에 외부 도구가 붙인다.
+- **결정론적(deterministic)**: 같은 입력이면 시간·실행 환경과 무관하게 항상 같은 출력. 블랙박스 테스트의 재현성을 위해 필요.
+- **스키마 드리프트(schema drift)**: 같은 메시지/계약을 주고받는 서비스들이 서로 다른 버전의 필드 정의를 갖게 되어 발생하는 불일치. 공유 계약 출처가 없을 때 자연 발생한다.
+- **out-of-process 블랙박스 테스트**: 대상 서비스의 내부 코드를 모른 채, 외부에서 HTTP API만 호출해 동작을 검증하는 방식(여기서는 RestAssured 기반).
+- **이기종(heterogeneous)**: 서로 다른 Java 버전·빌드 도구·프레임워크가 한 시스템에 섞여 있는 상태.
+- **BFF (Backend For Frontend)**: 외부 클라이언트 전용 진입 서비스. 여러 내부 서비스를 호출해 화면에 맞는 형태로 응답을 조합한다.
+- **publish-after-commit**: DB 트랜잭션이 커밋된 뒤에 Kafka 이벤트를 발행하는 순서. 소비자가 아직 저장되지 않은 데이터를 조회하는 race를 막는다.
 
 ---
 
@@ -73,7 +83,7 @@
 
 | 서비스 | Java | Spring Boot | 빌드 | 저장소 | HTTP 스타일 / 인터서비스 클라이언트 |
 |---|---|---|---|---|---|
-| bff-gateway | 21 | 3.4.x | Gradle | — | Spring Cloud Gateway (리액티브 라우팅) |
+| bff-gateway | 21 | 3.4.x | Gradle | — | WebFlux BFF: Spring Cloud Gateway 라우팅 + `WebClient` 집계 핸들러 |
 | auth-user-service | 17 | 3.3.x | Maven | MySQL + Redis | Spring MVC + `RestTemplate` |
 | diary-service | 23 | 3.4.x | Gradle | Postgres | Spring MVC + `WebClient` |
 | counseling-service | 21 | 3.4.x | Gradle | Redis | Spring WebFlux(리액티브) + `WebClient` |
@@ -98,8 +108,8 @@
 
 ### 3.2 diary-service (Java 23 · Postgres)
 - **책임**: 일기 CRUD, **시뮬레이션 KMS envelope 암호화**(서버측 DEK/KEK 암복호화), 감정/활력 메타데이터.
-- **엔티티**: `DiaryEntry{id, userId, encryptedTitle, encryptedContent, encryptedGraph, iv들, encryptedDek, primaryEmotion, energyScore, timestamp}`.
-- **흐름**: 생성 시 `diary.created` 발행. mindgraph가 그래프 생성을 위해 호출하는 **서버측 복호화 엔드포인트** 제공.
+- **엔티티**: `DiaryEntry{id, userId, encryptedTitle, encryptedContent, titleIv, contentIv, encryptedDek, dekIv, primaryEmotion, energyScore, timestamp}`. **그래프는 diary가 보유하지 않는다**(mindgraph-service 소유). diary는 제목/본문만 암호화 저장한다.
+- **흐름**: 일기 저장 트랜잭션 **커밋 후** `diary.created` 발행(publish-after-commit) — mindgraph가 곧이어 복호화 엔드포인트를 호출할 때 데이터가 이미 커밋돼 있도록 보장. (Outbox 패턴은 비범위.) mindgraph가 그래프 생성을 위해 호출하는 **서버측 복호화 엔드포인트** 제공.
 - **내부 API**: `POST/GET/PUT/DELETE /internal/diaries`, `GET /internal/diaries/{id}`, `GET /internal/diaries/{id}/content`(복호화 본문).
 
 ### 3.3 mindgraph-service (Java 11 · Postgres + Redis)
@@ -114,12 +124,12 @@
 
 ### 3.5 community-service (Java 1.8 · MySQL)
 - **책임**: 익명 게시판 — 글/댓글/좋아요.
-- **엔티티**: `Post{id, title, category∈[relationship,career,family,mental,daily], content, moodEmoji, nickname, likes, createdAt}`, `Comment{id, postId, author, role∈[empathic,analytical,sincere,hopeful], content, createdAt}`.
+- **엔티티**: `Post{id, userId, title, category∈[relationship,career,family,mental,daily], content, moodEmoji, nickname, likes, createdAt}`, `Comment{id, postId, author, role∈[empathic,analytical,sincere,hopeful], content, createdAt}`. (`userId`는 익명 표시명 `nickname`과 별개로 내부 식별·이벤트 발행에 사용.)
 - **흐름**: `post.created`, `comment.created`, `mood.logged`(moodEmoji) 발행.
 - **내부 API**: `POST/GET /internal/posts`, `POST /internal/posts/{id}/comments`, `POST /internal/posts/{id}/like`.
 
 ### 3.6 notification-service (Java 17 · Redis · consumer 전용)
-- **책임**: `graph.updated`, `comment.created` 소비 → 알림/다이제스트 생성, Redis 기반 중복제거. 아웃바운드 REST 없음.
+- **책임**: `graph.updated`, `comment.created` 소비 → 알림/다이제스트 생성, Redis 기반 중복제거. **아웃바운드 REST 없음** — 알림 대상은 이벤트 페이로드의 식별자(`graph.updated.userId`, `comment.created.postAuthorUserId`)만으로 결정한다(추가 조회 불필요).
 - **엔티티**: `Notification{userId, type, payload, dedupKey, createdAt}`.
 
 ### 3.7 analytics-service (Java 23 · Postgres)
@@ -127,8 +137,9 @@
 - **엔티티**: `MoodPoint{userId, source, mood, score, occurredAt}`, 집계 뷰.
 - **내부 API**: `GET /internal/analytics/mood/{userId}`, `GET /internal/analytics/global`.
 
-### 3.8 bff-gateway (Java 21 · Spring Cloud Gateway)
+### 3.8 bff-gateway (Java 21 · WebFlux BFF)
 - **책임**: 외부 진입점, 토큰 검증 위임, 화면용 응답 집계.
+- **구현 방식**: 단순 통과(passthrough) 라우팅은 **Spring Cloud Gateway 라우트**로, 여러 서비스를 합치는 합성(composite) 엔드포인트(예: `GET /diaries/{id}` = diary + mindgraph)는 **`WebClient` 기반 집계 핸들러**로 처리한다. (순수 Gateway만으로는 응답 집계가 어렵기 때문.)
 - **외부 API (`/api/v1`)**:
 ```
 POST /auth/login            소셜 로그인        POST /auth/guest          게스트 진입
@@ -145,14 +156,18 @@ GET  /me/mood-trends        무드 추이(analytics 집계)
 
 ## 4. Kafka 이벤트 카탈로그
 
-추적 헤더 없음. 각 서비스는 토픽명·이벤트 필드 규약을 **독립적으로 코드에 반영**(중앙 레지스트리 없음).
+**직렬화**: 모든 이벤트는 **JSON**으로 직렬화한다(스키마 레지스트리 없음, schemaless). JSON을 택한 이유: 발행자가 필드를 추가/이름변경해도 소비자가 즉시 깨지지 않고 조용히 무시·결측되어 **스키마 드리프트가 자연 발생**하기 때문 — 도구가 이를 탐지하는지 검증하기에 적합하다. 추적 헤더 없음. 각 서비스는 토픽명·이벤트 필드 규약을 **독립적으로 자기 코드의 POJO로 반영**(중앙 레지스트리·공유 스키마 없음).
+
+> **스키마 드리프트 의도 범위**: 소비자는 모르는 필드를 무시(`FAIL_ON_UNKNOWN_PROPERTIES=false`)하고, 없는 필드는 null/기본값으로 처리하도록 둔다. 즉 "선택적 필드 추가/결측"으로 인한 느슨한 불일치를 허용한다. 타입 변경 같은 강한 파괴는 의도적으로 만들지 않는다(테스트베드가 항상 기동은 되어야 하므로).
+
+각 이벤트는 **자기완결적(self-contained)**이다 — 소비자가 추가 조회 없이 처리할 수 있도록 필요한 식별자를 페이로드에 포함한다(특히 notification은 아웃바운드 REST가 없으므로 알림 대상 id가 페이로드에 있어야 한다).
 
 | 토픽 | 발행자 | 소비자 | 키 페이로드 |
 |---|---|---|---|
 | `diary.created` | diary | mindgraph, analytics | `{eventId, userId, diaryId, primaryEmotion, energyScore, occurredAt}` |
 | `graph.updated` | mindgraph | counseling, notification | `{eventId, userId, diaryId, nodeCount, occurredAt}` |
 | `post.created` | community | counseling, analytics | `{eventId, postId, userId, category, moodEmoji, occurredAt}` |
-| `comment.created` | community | notification | `{eventId, postId, commentId, role, occurredAt}` |
+| `comment.created` | community | notification | `{eventId, postId, commentId, postAuthorUserId, role, occurredAt}` |
 | `mood.logged` | community | analytics | `{eventId, userId, source, mood, score, occurredAt}` |
 
 ### 4.1 대표 다단계 인과 체인 (추적 도구 검증의 핵심 시나리오)
@@ -181,7 +196,7 @@ POST /api/v1/diaries (외부)
 - 모든 외부/내부 API에 OpenAPI 3 문서(springdoc) 노출 → 계약 기반 테스트 가능.
 - 안정적 JSON 스키마, RFC 7807 일관 에러 포맷.
 - `/actuator/health`로 기동 대기/검증.
-- 테스트용 시드 데이터 로더(profile `seed`) — peace_of_mind 시드 게시글("길을잃은갈매기" 취업 고민 등) 재현.
+- 테스트용 시드 데이터 로더(profile `seed`) — peace_of_mind 시드 게시글("길을잃은갈매기" 취업 고민 등) 재현. 구체 목표: **5개 카테고리 × 2~3개 = 약 10~15개 게시글**, 다양한 `moodEmoji` 포함. 로더는 **idempotent**(고정 id 기반 중복 방지)하여 재기동·반복 테스트에서 동일 상태를 보장한다.
 
 ### 5.3 멀티레포 구성
 서비스 8개 + 지원 레포 1개. 각 서비스는 독립 레포이며 자기 DTO·이벤트 POJO를 자체 보유한다.
@@ -196,7 +211,7 @@ tainted-spring-notification     (Gradle, Java17)
 tainted-spring-analytics        (Maven,  Java23)
 tainted-spring-platform         # docker-compose, k8s 매니페스트, .env, 부트스트랩 스크립트 (계약 미보유)
 ```
-- **서비스 디스커버리**: 디스커버리 서버 없음. 다른 서비스의 base URL·엔드포인트는 **설정(env/`application.yml`)으로 주입** — 로컬은 compose 네트워크 DNS, EKS는 k8s Service DNS.
+- **서비스 디스커버리**: 디스커버리 서버 없음. 다른 서비스의 base URL은 `application.yml`의 `services.<name>.url` 프로퍼티로 정의하고 **환경변수로 오버라이드**한다(예: `SERVICES_DIARY_URL`). 프로파일별 기본값 — 로컬/`docker`: compose DNS(`http://diary:8080`), `eks`: k8s Service DNS(`http://tainted-spring-diary`). 코드는 환경별 호스트를 모른 채 프로퍼티만 참조.
 - **계약**: 공유 jar/스키마 레지스트리 없음(완전 독립). 스키마 드리프트가 자연 발생 → 도구가 produce/consume 양쪽 스키마를 교차 검증해야 함.
 
 ### 5.4 Docker Compose (로컬 실행환경) — `platform` 레포
