@@ -212,6 +212,8 @@ curl -s -X POST http://localhost:8080/api/v1/counseling/sessions/$SID/messages \
 curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/v1/me/mood-trends
 ```
 
+> **참고 — `points:[]` 빈 값이 나오는 경우**: 이 엔드포인트는 **인증 토큰의 사용자**(예: 게스트 진입 시 발급된 UUID)를 기준으로 집계합니다. 반면 5.2의 일기 작성 예시는 요청 **본문**에 `"userId":"u1"`을 넣으므로, 토큰 사용자와 본문 `userId`가 다르면 토큰 사용자 앞으로 쌓인 데이터가 없어 `{"points":[],"averageScore":0.0,"count":0}`이 반환됩니다(호출 자체는 정상 `200`). 특정 사용자(`u1`)의 집계 데이터를 직접 확인하려면 6장의 `GET /internal/analytics/mood/u1`을 사용하세요.
+
 ---
 
 ## 6. 내부 API (개별 서비스 직접 호출 — 블랙박스 테스트/디버깅용)
