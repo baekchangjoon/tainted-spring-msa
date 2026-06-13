@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 일기 CRUD, 서버측 시뮬레이션 KMS envelope 암호화(AES/GCM), 감정·활력 메타데이터 저장, `diary.created` Kafka 이벤트 발행(publish-after-commit)을 제공하는 `diary-service`(Java 23 · Gradle 8.10 · Spring Boot 3.4.x · PostgreSQL)를 RestAssured/Testcontainers로 검증 가능하게 구현한다.
+**Goal:** 일기 CRUD, 서버측 시뮬레이션 KMS envelope 암호화(AES/GCM), 감정·활력 메타데이터 저장, `diary.created` Kafka 이벤트 발행(publish-after-commit)을 제공하는 `diary-service`(Java 23 · Gradle 8.12 · Spring Boot 3.4.x · PostgreSQL)를 RestAssured/Testcontainers로 검증 가능하게 구현한다.
 
 **Architecture:** Spring MVC REST 서비스. 일기 제목·본문은 항상 암호화하여 저장(per-entry 랜덤 DEK + AES/GCM, DEK 자체는 설정 KEK로 다시 암호화 → envelope encryption 시뮬레이션). 복호화 엔드포인트를 통해 mindgraph가 콜백 조회 가능. 시간/ID는 주입 가능한 `Clock`/`IdGenerator` 빈으로 결정론 확보. `diary.created` 이벤트는 **publish-after-commit** 패턴 적용 — `@Transactional` 서비스가 DB 저장 후 Spring `ApplicationEvent`를 발행하고, `@TransactionalEventListener(phase=AFTER_COMMIT)` 리스너가 `KafkaTemplate`으로 `diary.created` JSON을 송신한다. 이 순서 덕분에 DB 커밋이 완료된 뒤에만 Kafka 메시지가 나가므로, mindgraph가 곧바로 `/internal/diaries/{id}/content`를 호출해도 데이터가 반드시 존재한다. 추적/관측 라이브러리는 넣지 않음(actuator health만 유지).
 
-**Tech Stack:** Java 23, Gradle 8.10 (Groovy DSL), Spring Boot 3.4.1, Spring Data JPA, spring-kafka, springdoc-openapi 2.6.0, PostgreSQL 16, Testcontainers(PostgreSQL + Kafka), RestAssured.
+**Tech Stack:** Java 23, Gradle 8.12 (Groovy DSL), Spring Boot 3.4.1, Spring Data JPA, spring-kafka, springdoc-openapi 2.6.0, PostgreSQL 16, Testcontainers(PostgreSQL + Kafka), RestAssured.
 
 ---
 
@@ -15,7 +15,7 @@
 - `tainted-spring-platform` 계획이 완료되어 있어야 통합 실행이 쉽다(단위/통합 테스트는 Testcontainers로 자체 인프라를 띄우므로 platform 없이도 테스트는 통과한다).
 - **레포 위치**: `/Users/changjoonbaek/workspace_claude-code/tainted-spring-diary/` (모든 경로는 이 루트 기준).
 - **포트**: 8082. **패키지 루트**: `com.tainted.diary`. **데이터스토어**: PostgreSQL DB `diary`.
-- **로컬 사전 설치**: JDK 23, Gradle 8.10+, Git, 그리고 **Docker 데몬**(Task 7 통합 테스트의 Testcontainers, Task 8 이미지 빌드, Task 9 compose에 필요). 단, 단위 테스트 `EnvelopeCryptoServiceTest`(Task 3)는 Docker 없이도 동작한다.
+- **로컬 사전 설치**: JDK 23, Gradle 8.12+ (Gradle 8.12 이상이라야 JDK 23에서 Gradle 자체 실행 가능 — 8.10은 JDK 22까지만 지원), Git, 그리고 **Docker 데몬**(Task 7 통합 테스트의 Testcontainers, Task 8 이미지 빌드, Task 9 compose에 필요). 단, 단위 테스트 `EnvelopeCryptoServiceTest`(Task 3)는 Docker 없이도 동작한다.
 
 ## File Structure
 
@@ -33,7 +33,8 @@ src/main/java/com/tainted/diary/
   id/IdGenerator.java                    # 인터페이스
   id/UuidIdGenerator.java                # 기본 구현
   crypto/EnvelopeCryptoService.java      # AES/GCM envelope 암/복호화
-  crypto/CipherResult.java               # 암호화 결과 record
+  crypto/CipherResult.java               # 단일 텍스트 암호화 결과 record (단위테스트용)
+  crypto/EnvelopeResult.java             # 제목+본문 단일 DEK 암호화 결과 record
   domain/DiaryEntry.java                 # JPA 엔티티
   domain/DiaryEntryRepository.java
   event/DiaryCreatedEvent.java           # Spring ApplicationEvent (내부)
@@ -142,7 +143,7 @@ test {
 Run:
 ```bash
 cd /Users/changjoonbaek/workspace_claude-code/tainted-spring-diary
-gradle wrapper --gradle-version 8.10
+gradle wrapper --gradle-version 8.12
 ```
 Expected: `gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar`, `gradle/wrapper/gradle-wrapper.properties` 생성.
 
@@ -284,7 +285,7 @@ git commit -m "feat: add injectable Clock and IdGenerator beans"
 ## Task 3: Envelope 암호화 서비스 (TDD)
 
 **Files:**
-- Create: `crypto/CipherResult.java`, `crypto/EnvelopeCryptoService.java`
+- Create: `crypto/CipherResult.java`, `crypto/EnvelopeResult.java`, `crypto/EnvelopeCryptoService.java`
 - Test: `src/test/java/com/tainted/diary/crypto/EnvelopeCryptoServiceTest.java`
 
 - [ ] **Step 1: 실패하는 테스트 작성**
@@ -347,6 +348,19 @@ class EnvelopeCryptoServiceTest {
         assertEquals(plaintext, crypto.decrypt(r1.ciphertext(), r1.iv(), r1.encryptedDek(), r1.dekIv()));
         assertEquals(plaintext, crypto.decrypt(r2.ciphertext(), r2.iv(), r2.encryptedDek(), r2.dekIv()));
     }
+
+    @Test
+    void encryptFieldsSharesOneDekForTitleAndContent() {
+        String title = "오늘의 제목";
+        String content = "오늘 하루의 본문 내용 🌱";
+        EnvelopeResult env = crypto.encryptFields(title, content);
+
+        // 제목·본문은 하나의 DEK로 암호화되므로, 동일한 encryptedDek/dekIv 로 양쪽 모두 복호화돼야 한다.
+        assertEquals(title, crypto.decrypt(
+                env.titleCipher(), env.titleIv(), env.encryptedDek(), env.dekIv()));
+        assertEquals(content, crypto.decrypt(
+                env.contentCipher(), env.contentIv(), env.encryptedDek(), env.dekIv()));
+    }
 }
 ```
 
@@ -369,6 +383,25 @@ package com.tainted.diary.crypto;
 public record CipherResult(
         String ciphertext,
         String iv,
+        String encryptedDek,
+        String dekIv
+) {}
+```
+
+`src/main/java/com/tainted/diary/crypto/EnvelopeResult.java`:
+```java
+package com.tainted.diary.crypto;
+
+/**
+ * 제목·본문을 하나의 DEK로 함께 암호화한 결과.
+ * DiaryEntry 는 encryptedDek 를 1개만 보관하므로, 두 필드가 같은 DEK로 암호화되어야
+ * 동일 encryptedDek 로 양쪽을 복호화할 수 있다. 모든 필드는 Base64 문자열.
+ */
+public record EnvelopeResult(
+        String titleCipher,
+        String titleIv,
+        String contentCipher,
+        String contentIv,
         String encryptedDek,
         String dekIv
 ) {}
@@ -448,6 +481,39 @@ public class EnvelopeCryptoService {
             );
         } catch (Exception e) {
             throw new IllegalStateException("Encryption failed", e);
+        }
+    }
+
+    /**
+     * 제목·본문을 <b>하나의 DEK</b>로 함께 암호화한다.
+     * DiaryEntry 가 encryptedDek 를 1개만 보관하므로 두 필드는 동일 DEK로 암호화돼야 하며,
+     * 그래야 같은 encryptedDek/dekIv 로 양쪽 모두 복호화할 수 있다.
+     * (IV는 필드마다 독립이므로 동일 DEK 재사용에도 GCM 안전성이 유지된다.)
+     */
+    public EnvelopeResult encryptFields(String title, String content) {
+        try {
+            // 1. 단일 랜덤 DEK 생성 (제목·본문 공용)
+            KeyGenerator kg = KeyGenerator.getInstance("AES");
+            kg.init(256, random);
+            SecretKey dek = kg.generateKey();
+
+            // 2. 제목·본문을 각각 독립 IV로, 그러나 동일 DEK로 암호화
+            byte[] titleIv = randomIv();
+            byte[] titleCipher = aesGcmEncrypt(title.getBytes(StandardCharsets.UTF_8), dek, titleIv);
+            byte[] contentIv = randomIv();
+            byte[] contentCipher = aesGcmEncrypt(content.getBytes(StandardCharsets.UTF_8), dek, contentIv);
+
+            // 3. DEK를 KEK로 1회 암호화
+            byte[] dekIv = randomIv();
+            byte[] encryptedDek = aesGcmEncrypt(dek.getEncoded(), kek, dekIv);
+
+            return new EnvelopeResult(
+                    b64(titleCipher), b64(titleIv),
+                    b64(contentCipher), b64(contentIv),
+                    b64(encryptedDek), b64(dekIv)
+            );
+        } catch (Exception e) {
+            throw new IllegalStateException("Field encryption failed", e);
         }
     }
 
@@ -921,7 +987,7 @@ public class GlobalExceptionHandler {
 ```java
 package com.tainted.diary.service;
 
-import com.tainted.diary.crypto.CipherResult;
+import com.tainted.diary.crypto.EnvelopeResult;
 import com.tainted.diary.crypto.EnvelopeCryptoService;
 import com.tainted.diary.domain.DiaryEntry;
 import com.tainted.diary.domain.DiaryEntryRepository;
@@ -967,16 +1033,15 @@ public class DiaryService {
         String diaryId = idGenerator.newId();
         Instant now = Instant.now(clock);
 
-        // 제목·본문을 각각 독립 DEK로 암호화 (동일 DEK 재사용 시 IV 충돌 위험 방지)
-        CipherResult titleResult = crypto.encrypt(request.title());
-        CipherResult contentResult = crypto.encrypt(request.content());
+        // 제목·본문을 하나의 DEK로 암호화 → 단일 encryptedDek 로 양쪽 복호화 가능
+        EnvelopeResult env = crypto.encryptFields(request.title(), request.content());
 
         DiaryEntry entry = new DiaryEntry(
                 diaryId,
                 request.userId(),
-                titleResult.ciphertext(), titleResult.iv(),
-                contentResult.ciphertext(), contentResult.iv(),
-                titleResult.encryptedDek(), titleResult.dekIv(),
+                env.titleCipher(), env.titleIv(),
+                env.contentCipher(), env.contentIv(),
+                env.encryptedDek(), env.dekIv(),
                 request.primaryEmotion(),
                 request.energyScore(),
                 now
@@ -1016,7 +1081,7 @@ public class DiaryService {
     public DiaryContentResponse getContent(String diaryId) {
         DiaryEntry entry = findOrThrow(diaryId);
 
-        // 제목·본문은 각각 독립 DEK로 암호화되어 있으므로 별도 복호화
+        // 제목·본문은 하나의 DEK로 암호화되어 있으므로, 동일 encryptedDek/dekIv 로 각각 복호화
         String title = crypto.decrypt(
                 entry.getEncryptedTitle(), entry.getTitleIv(),
                 entry.getEncryptedDek(), entry.getDekIv());
@@ -1031,13 +1096,12 @@ public class DiaryService {
     public DiaryMetaResponse update(String diaryId, UpdateDiaryRequest request) {
         DiaryEntry entry = findOrThrow(diaryId);
 
-        CipherResult titleResult = crypto.encrypt(request.title());
-        CipherResult contentResult = crypto.encrypt(request.content());
+        EnvelopeResult env = crypto.encryptFields(request.title(), request.content());
 
         entry.update(
-                titleResult.ciphertext(), titleResult.iv(),
-                contentResult.ciphertext(), contentResult.iv(),
-                titleResult.encryptedDek(), titleResult.dekIv(),
+                env.titleCipher(), env.titleIv(),
+                env.contentCipher(), env.contentIv(),
+                env.encryptedDek(), env.dekIv(),
                 request.primaryEmotion(),
                 request.energyScore()
         );
@@ -1437,7 +1501,7 @@ diary:
 `Dockerfile`:
 ```dockerfile
 # ── build stage ──────────────────────────────────────────────────────────────
-FROM gradle:8.10-jdk23 AS build
+FROM gradle:8.12-jdk23 AS build
 WORKDIR /app
 # 의존성 캐시 레이어를 먼저 만들어 재빌드 시간 단축
 COPY build.gradle settings.gradle ./
@@ -1597,15 +1661,15 @@ git commit -m "feat: wire diary service into compose and k8s skeleton"
 - Docker 멀티스테이지/non-root/curl 설치 → Task 8 ✔
 - docker 프로파일 DNS(postgres:5432, kafka:29092) → Task 8 application-docker.yml ✔
 - compose 배선(빈 JAVA_TOOL_OPTIONS 슬롯, depends_on postgres+kafka) + k8s 스켈레톤 → Task 9 ✔
-- Gradle 8.10, Java toolchain 23, Spring Boot 3.4.1, Testcontainers 1.20.3 → Task 1 build.gradle ✔
+- Gradle 8.12, Java toolchain 23, Spring Boot 3.4.1, Testcontainers 1.20.3 → Task 1 build.gradle ✔
 - Jar 이름 `diary-service-0.1.0.jar` → `build.gradle` version+'jar.archiveBaseName' + Dockerfile COPY 일치 ✔
 
 **Placeholder scan:** 모든 코드 step에 완전한 소스, 모든 명령에 기대출력 명시. 플레이스홀더(TODO/FIXME/`...`) 없음. ✔
 
 **Type/이름 일관성:**
 - `IdGenerator.newId()` — Task 2 정의, Task 5·6에서 동일 시그니처 사용 ✔
-- `EnvelopeCryptoService.encrypt(String)→CipherResult` / `decrypt(String,String,String,String)→String` — Task 3 정의, Task 6 `DiaryService`에서 동일 시그니처 사용 ✔
-- `CipherResult.ciphertext()/iv()/encryptedDek()/dekIv()` (record accessor) — Task 3 정의, Task 6·7에서 일치 ✔
+- `EnvelopeCryptoService.encryptFields(title,content)→EnvelopeResult` / `decrypt(String,String,String,String)→String` — Task 3 정의, Task 6 `DiaryService.create/update/getContent`에서 사용. 단일 `encrypt(String)→CipherResult`는 Task 3 단위테스트 전용 ✔
+- `EnvelopeResult.titleCipher()/titleIv()/contentCipher()/contentIv()/encryptedDek()/dekIv()` 및 `CipherResult` accessor — Task 3 정의, Task 3 단위테스트·Task 6에서 일치. **제목·본문이 단일 DEK를 공유**하므로 단일 `encryptedDek`로 양쪽 복호화 가능 ✔
 - `DiaryEntry.getEncryptedTitle()/getTitleIv()/getEncryptedContent()/getContentIv()/getEncryptedDek()/getDekIv()` — Task 4 정의, Task 6 사용 일치 ✔
 - `DiaryCreatedEvent` (내부 Spring 이벤트) / `DiaryCreatedKafkaPayload` (Kafka JSON) 분리 — Task 5 정의, Task 5 리스너 사용 일치 ✔
 - DTO 필드명(`diaryId`,`userId`,`primaryEmotion`,`energyScore`,`timestamp`,`title`,`content`) — Task 6 정의, Task 7 RestAssured 검증 키와 일치 ✔
