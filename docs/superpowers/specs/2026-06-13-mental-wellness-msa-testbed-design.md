@@ -130,11 +130,11 @@
 
 ### 3.6 notification-service (Java 17 · Redis · consumer 전용)
 - **책임**: `graph.updated`, `comment.created` 소비 → 알림/다이제스트 생성, Redis 기반 중복제거. **아웃바운드 REST 없음** — 알림 대상은 이벤트 페이로드의 식별자(`graph.updated.userId`, `comment.created.postAuthorUserId`)만으로 결정한다(추가 조회 불필요).
-- **엔티티**: `Notification{userId, type, payload, dedupKey, createdAt}`.
+- **엔티티**: `Notification{id, userId, type, payload, dedupKey, createdAt}`.
 
 ### 3.7 analytics-service (Java 23 · Postgres)
 - **책임**: `diary.created`, `post.created`, `mood.logged` 소비 → 감정/활력 시계열 집계. 조회 API 제공.
-- **엔티티**: `MoodPoint{userId, source, mood, score, occurredAt}`, 집계 뷰.
+- **엔티티**: `MoodPoint{id(=eventId, 멱등키), userId, source, label, score, occurredAt}`, 집계 뷰. (`label`은 primaryEmotion/mood/moodEmoji를 통일하는 필드. 구현에서 `label`로 명명.)
 - **내부 API**: `GET /internal/analytics/mood/{userId}`, `GET /internal/analytics/global`.
 
 ### 3.8 bff-gateway (Java 21 · WebFlux BFF)

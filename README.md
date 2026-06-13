@@ -106,12 +106,15 @@ docker compose logs -f bff-gateway   # 특정 서비스 로그
 docker compose down                  # 정리 (-v 붙이면 볼륨까지 삭제 → DB 초기화)
 ```
 
-### 인프라만 / Kafka UI
+### 인프라만 실행 / 스모크 / Kafka UI
+
+`docker-compose.yml`에는 인프라 5종과 서비스 8개가 모두 정의되어 있습니다(프로파일 없음). 따라서 `make up`(= `docker compose up -d --wait`)은 **전체 스택**을 띄웁니다. 서비스 없이 인프라만 띄우려면 컨테이너를 명시하세요:
 
 ```bash
-make up      # 인프라 5종만 (mysql/postgres/redis/kafka/zookeeper)
-make smoke   # 인프라 연결성 스모크 테스트
-make down
+# 인프라 5종만 (서비스 없이 로컬 개발 시)
+docker compose up -d zookeeper kafka mysql postgres redis
+make smoke   # 인프라 연결성 스모크 테스트 (인프라 5종만 검증)
+make down    # 정리 (-v 로 볼륨까지)
 
 docker compose --profile ui up -d kafka-ui   # Kafka UI → http://localhost:8090
 ```
@@ -217,11 +220,11 @@ curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/v1/me/mood-t
 
 | 서비스 | 대표 내부 엔드포인트 |
 |---|---|
-| auth-user :8081 | `POST /internal/auth/verify` `{token}` · `GET /internal/users/{id}` |
+| auth-user :8081 | `POST /api/v1/auth/login` `{provider,providerToken}` · `POST /api/v1/auth/guest` · `GET /api/v1/me` · `POST /internal/auth/verify` `{token}` · `GET /internal/users/{id}` |
 | diary :8082 | `POST/GET/PUT/DELETE /internal/diaries` · `GET /internal/diaries/{id}/content`(서버측 복호화) |
 | mindgraph :8083 | `GET /internal/graphs/user/{userId}` · `GET /internal/graphs/diary/{diaryId}` |
 | counseling :8084 | `POST /internal/counseling/sessions` · `POST /internal/counseling/sessions/{id}/messages` |
-| community :8085 | `POST/GET /internal/posts` · `POST /internal/posts/{id}/comments` · `POST /internal/posts/{id}/like` |
+| community :8085 | `POST/GET /internal/posts` · `GET /internal/posts/{id}` · `POST /internal/posts/{id}/comments` · `POST /internal/posts/{id}/like` |
 | analytics :8086 | `GET /internal/analytics/mood/{userId}` · `GET /internal/analytics/global` |
 | notification :8087 | `GET /internal/notifications/{userId}` |
 
