@@ -108,7 +108,7 @@
 - **내부 API**: `GET /internal/graphs/user/{userId}`, `GET /internal/graphs/diary/{diaryId}`.
 
 ### 3.4 counseling-service (Java 21 · Redis · WebFlux)
-- **책임**: AI 상담사 4페르소나(공감 수현 / 분석 성우 / 직설 진수 / 희망 다혜) 1:1 챗, **결정론적 LLM mock**. mindgraph 컨텍스트를 REST로 조회해 응답에 반영. `post.created` 소비 → 해당 게시글에 AI 댓글 생성 → community에 댓글 등록(REST) 및 `comment.created` 트리거.
+- **책임**: AI 상담사 4페르소나(공감 수현 / 분석 성우 / 직설 진수 / 희망 다혜) 1:1 챗, **결정론적 LLM mock**. mindgraph 컨텍스트를 REST로 조회해 응답에 반영. `post.created` 소비 → 해당 게시글에 AI 댓글 생성 → community에 댓글 등록(REST 호출). (`comment.created` 이벤트는 등록을 받은 community가 발행한다.)
 - **엔티티**: `ChatSession`, `ChatMessage{role∈[user,model], content}`. Redis에 세션/히스토리 저장.
 - **내부 API**: `POST /internal/counseling/sessions`, `POST /internal/counseling/sessions/{id}/messages`.
 
@@ -152,8 +152,8 @@ GET  /me/mood-trends        무드 추이(analytics 집계)
 | `diary.created` | diary | mindgraph, analytics | `{eventId, userId, diaryId, primaryEmotion, energyScore, occurredAt}` |
 | `graph.updated` | mindgraph | counseling, notification | `{eventId, userId, diaryId, nodeCount, occurredAt}` |
 | `post.created` | community | counseling, analytics | `{eventId, postId, userId, category, moodEmoji, occurredAt}` |
-| `comment.created` | counseling/community | notification | `{eventId, postId, commentId, role, occurredAt}` |
-| `mood.logged` | diary, community | analytics | `{eventId, userId, source, mood, score, occurredAt}` |
+| `comment.created` | community | notification | `{eventId, postId, commentId, role, occurredAt}` |
+| `mood.logged` | community | analytics | `{eventId, userId, source, mood, score, occurredAt}` |
 
 ### 4.1 대표 다단계 인과 체인 (추적 도구 검증의 핵심 시나리오)
 ```
